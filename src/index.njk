@@ -1,0 +1,168 @@
+---
+title: Recipes
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <style>
+    body { font: 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 2rem; }
+    h1 { margin-bottom: .25rem; }
+    .filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin: 1rem 0 1.5rem; }
+    fieldset { border: 1px solid #ddd; border-radius: 10px; padding: .75rem 1rem; }
+    legend { padding: 0 .5rem; font-weight: 600; }
+    label { display: inline-block; margin: .2rem .5rem .2rem 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 1rem; }
+    .card h3 { margin: 0 0 .25rem; font-size: 1.1rem; }
+    .muted { color: #666; font-size: .9rem; }
+    .tag { font-size: .8rem; background: #f3f3f3; border-radius: 999px; padding: .1rem .5rem; margin-right: .25rem; }
+  </style>
+</head>
+<body>
+  <h1>Recipes</h1>
+
+  <div class="filters">
+    <fieldset data-facet="season">
+      <legend>Season</legend>
+      <div>
+        {% for val in collections.facetMap.season %}
+          <label><input type="checkbox" value="{{ val }}"> {{ val }}</label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <fieldset data-facet="cuisine">
+      <legend>Cuisine</legend>
+      <div>
+        {% for val in collections.facetMap.cuisine %}
+          <label><input type="checkbox" value="{{ val }}"> {{ val }}</label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <fieldset data-facet="course">
+      <legend>Course</legend>
+      <div>
+        {% for val in collections.facetMap.course %}
+          <label><input type="checkbox" value="{{ val }}"> {{ val }}</label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Dietary</legend>
+      <label><input id="veg-only" type="checkbox"> Vegetarian only</label>
+    </fieldset>
+    
+    <div class="actions" style="margin-top:.5rem;">
+  <button id="clear-filters" type="button">Clear all filters</button>
+</div>
+  </div>
+
+  <div id="recipe-list" class="grid">
+    {% for post in collections.recipes | reverse %}
+      {% set seasons = (post.data.season or []) %}
+      {% set cuisines = (post.data.cuisine or []) %}
+      {% set courses = (post.data.course or []) %}
+      {% set veg = (post.data.vegetarian and 'true') or 'false' %}
+      <article class="card recipe"
+        data-season="{{ seasons | join(',') }}"
+        data-cuisine="{{ cuisines | join(',') }}"
+        data-course="{{ courses | join(',') }}"
+        data-vegetarian="{{ veg }}">
+        <h3><a href="{{ post.url | url }}">{{ post.data.title }}</a></h3>
+        {% if post.data.image %}
+          <img src="{{ post.data.image | url }}" alt="" style="max-width:100%; border-radius:8px;">
+        {% endif %}
+        <p class="muted">
+          {% for t in seasons %}<span class="tag">{{ t }}</span>{% endfor %}
+          {% for t in cuisines %}<span class="tag">{{ t }}</span>{% endfor %}
+          {% for t in courses %}<span class="tag">{{ t }}</span>{% endfor %}
+          {% if post.data.vegetarian %}<span class="tag">vegetarian</span>{% endif %}
+        </p>
+        {% if post.templateContent %}
+          <p>{{ post.templateContent | striptags | truncate(120) }}</p>
+        {% endif %}
+      </article>
+    {% endfor %}
+  </div>
+
+  <script>
+    (function(){
+  const list = document.getElementById('recipe-list');
+  const cards = Array.from(list.querySelectorAll('.recipe'));
+  const vegOnly = document.getElementById('veg-only');
+  const clearBtn = document.getElementById('clear-filters'); // NEW
+
+  // facet checkboxes map
+  const facetBoxes = new Map();
+  document.querySelectorAll('fieldset[data-facet]').forEach(fs => {
+    facetBoxes.set(fs.dataset.facet, Array.from(fs.querySelectorAll('input[type="checkbox"]')));
+  });
+
+  function selections(){
+    const sel = {};
+    for (const [facet, boxes] of facetBoxes.entries()){
+      sel[facet] = boxes.filter(b => b.checked).map(b => b.value);
+    }
+    sel.vegetarian = vegOnly.checked;
+    return sel;
+  }
+
+  function hasAnySelection(sel){
+    if (sel.vegetarian) return true;
+    return Object.entries(sel).some(([facet, vals]) => facet !== 'vegetarian' && vals && vals.length);
+  }
+
+  function cardMatches(card, sel){
+    for (const [facet, values] of Object.entries(sel)){
+      if (facet === 'vegetarian') continue;
+      if (!values || values.length === 0) continue;
+      const cardVals = (card.dataset[facet] || '').split(',').filter(Boolean);
+      if (!values.some(v => cardVals.includes(v))) return false;
+    }
+    if (sel.vegetarian && !card.hasAttribute('data-vegetarian')) return false;
+    return true;
+  }
+
+  function apply(){
+    const sel = selections();
+
+    // Disable/enable Clear button based on whether anything is selected
+    if (clearBtn) {
+      if (hasAnySelection(sel)) clearBtn.removeAttribute('disabled');
+      else clearBtn.setAttribute('disabled', '');
+    }
+
+    if (!hasAnySelection(sel)) {
+      cards.forEach(c => { c.style.display = 'none'; });
+      return;
+    }
+    cards.forEach(c => { c.style.display = cardMatches(c, sel) ? '' : 'none'; });
+  }
+
+  // NEW: Clear all filters handler
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      facetBoxes.forEach(boxes => boxes.forEach(b => b.checked = false));
+      vegOnly.checked = false;
+      apply(); // returns to blank state
+      clearBtn.setAttribute('disabled', ''); // optional: immediately disable
+    });
+  }
+
+  // listeners
+  facetBoxes.forEach(boxes => boxes.forEach(b => b.addEventListener('change', apply)));
+  vegOnly.addEventListener('change', apply);
+
+  // start hidden until a filter is chosen
+  apply();
+})();
+
+
+  </script>
+</body>
+</html>
